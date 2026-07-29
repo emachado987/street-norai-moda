@@ -122,16 +122,23 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     <main className="pt-28 pb-20 px-6 max-w-7xl mx-auto min-h-screen flex flex-col">
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row items-start md:items-end justify-between mb-12 pb-8 border-b border-white/10 gap-6">
-        <div>
-          <span className="text-xs uppercase font-mono tracking-widest text-red-500 block mb-2 font-semibold">
-            EDITORIAL ARCHIVE & SESSIONS
-          </span>
-          <h1 className="font-serif text-5xl md:text-7xl font-light tracking-tight">
-            Street Lookbook
-          </h1>
-          <p className="text-white/50 text-sm font-sans font-light tracking-wide max-w-xl mt-3 leading-relaxed">
-            Curated archive of synthesized high-fashion street editorials. Explore generated lookbooks or launch a new session.
-          </p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 md:gap-8">
+          <img 
+            src="/logo.png" 
+            alt="NØRAI STREET FASHION" 
+            className="w-28 sm:w-36 md:w-44 h-auto object-contain shrink-0" 
+          />
+          <div>
+            <span className="text-xs uppercase font-mono tracking-widest text-red-500 block mb-2 font-semibold">
+              EDITORIAL ARCHIVE & SESSIONS
+            </span>
+            <h1 className="font-serif text-5xl md:text-7xl font-light tracking-tight">
+              Street Lookbook
+            </h1>
+            <p className="text-white/50 text-sm font-sans font-light tracking-wide max-w-xl mt-3 leading-relaxed">
+              Curated archive of synthesized high-fashion street editorials. Explore generated lookbooks or launch a new session.
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

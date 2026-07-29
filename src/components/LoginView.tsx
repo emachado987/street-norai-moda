@@ -46,8 +46,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBack, onLogin }) => {
           Volver al Archivo
         </button>
 
-        <div className="font-serif text-2xl tracking-[0.2em] uppercase font-light">
-          NØRAI <span className="text-red-500 font-sans text-xs tracking-widest ml-1 font-semibold">STREET</span>
+        <div className="flex items-center">
+          <img 
+            src="/logo.png" 
+            alt="NØRAI STREET FASHION" 
+            className="h-10 w-auto object-contain" 
+          />
         </div>
       </header>
 

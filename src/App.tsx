@@ -162,16 +162,17 @@ export default function App() {
       <nav className="fixed top-0 w-full glass-nav z-40">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div
-            className="font-serif text-2xl tracking-[0.2em] uppercase cursor-pointer flex items-center gap-2"
+            className="cursor-pointer flex items-center"
             onClick={() => {
               reset();
               setCurrentView('archive');
             }}
           >
-            <span>NØRAI</span>
-            <span className="text-red-500 font-sans text-xs tracking-widest font-semibold px-2 py-0.5 rounded bg-red-500/10 border border-red-500/20">
-              STREET
-            </span>
+            <img 
+              src="/logo.png" 
+              alt="NØRAI STREET FASHION" 
+              className="h-12 md:h-14 w-auto object-contain hover:opacity-90 transition-opacity" 
+            />
           </div>
 
           <div className="flex items-center gap-3">
