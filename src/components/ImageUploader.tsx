@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Upload, X, Camera, Shirt, UserCheck } from 'lucide-react';
 
 interface ImageUploaderProps {
@@ -17,16 +17,30 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   icon = 'shirt'
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const processFile = (file: File) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Formato no permitido. Usa JPG, PNG o WEBP.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('La imagen supera el límite de 10 MB.');
+      return;
+    }
+
+    setError(null);
+    const reader = new FileReader();
+    reader.onloadend = () => onImageChange(reader.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      onImageChange(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    processFile(file);
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -34,11 +48,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      onImageChange(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    processFile(file);
   };
 
   return (
@@ -71,7 +81,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           onChange={handleFileChange}
           className="hidden"
         />
@@ -112,6 +122,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           </div>
         )}
       </div>
+      {error && <p className="mt-2 text-xs text-red-400" role="alert">{error}</p>}
     </div>
   );
 };

@@ -5,12 +5,12 @@ import { ResultView } from './components/ResultView';
 import { HistoryView } from './components/HistoryView';
 import { LoginView } from './components/LoginView';
 import { DemoView } from './components/DemoView';
-import { ApiKeyDialog } from './components/ApiKeyDialog';
+import { AiTransparencyNotice } from './components/AiTransparencyNotice';
 import { generateStreetFashion } from './services/api';
-import { db, storage } from './firebase';
-import { collection, addDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { StreetPreset } from './data/demoData';
+import { saveHistoryItem } from './services/storageService';
+import { auth } from './firebase';
+import { getIdTokenResult, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Sparkles, History, ArrowRight, Sun, Moon, LogOut } from 'lucide-react';
 
 export default function App() {
@@ -33,6 +33,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Remove secrets saved by versions anteriores. Provider keys now live only on the server.
+    localStorage.removeItem('norai_gemini_key');
+    localStorage.removeItem('norai_openai_key');
+    localStorage.removeItem('norai_selected_engine');
+  }, []);
+
+  useEffect(() => {
     if (theme === 'light') {
       document.documentElement.classList.add('light');
     } else {
@@ -41,11 +48,34 @@ export default function App() {
     localStorage.setItem('norai_theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    if (!auth) return;
+
+    return onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setIsAuthenticated(false);
+        return;
+      }
+
+      try {
+        const token = await getIdTokenResult(user, true);
+        setIsAuthenticated(token.claims.admin === true);
+      } catch {
+        setIsAuthenticated(false);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated && currentView === 'generator') setCurrentView('archive');
+  }, [currentView, isAuthenticated]);
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (auth) await signOut(auth);
     setIsAuthenticated(false);
     reset();
     setCurrentView('archive');
@@ -65,27 +95,18 @@ export default function App() {
     setIsGenerating(true);
     setError(null);
 
-    const savedEngine = (localStorage.getItem('norai_selected_engine') as 'gemini' | 'openai') || 'gemini';
-    const userApiKey = savedEngine === 'gemini' 
-      ? localStorage.getItem('norai_gemini_key') || undefined
-      : localStorage.getItem('norai_openai_key') || undefined;
-
     try {
       const result = await generateStreetFashion({
         productImageBase64: productImage,
         modelImageBase64: modelImage,
         scenePrompt: streetPrompt,
-        engine: savedEngine,
-        apiKey: userApiKey
+        engine: 'gemini'
       });
 
       setGeneratedImage(result.image);
       setGeneratedHeadline(result.headline);
       setGeneratedCopy(result.copy);
       setUsedEngine(result.engine);
-
-      // Auto-save to Firebase & History archive automatically
-      await handleSaveToHistory(result.image, result.copy, result.headline);
     } catch (err: any) {
       console.error('Generación fallida:', err);
       setError(err.message || 'Fallo al generar la imagen editorial. Por favor intenta nuevamente.');
@@ -95,42 +116,19 @@ export default function App() {
   };
 
   const handleSaveToHistory = async (image: string, copy: string, headline: string) => {
-    let imageUrl = image;
-
-    if (db && storage && image.startsWith('data:image')) {
-      try {
-        const imageId = `street_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        const storageRef = ref(storage, `images/street/${imageId}.png`);
-
-        const response = await fetch(image);
-        const blob = await response.blob();
-
-        await uploadBytes(storageRef, blob, { contentType: 'image/png' });
-        imageUrl = await getDownloadURL(storageRef);
-      } catch (e: any) {
-        console.warn('Storage Error fallback to base64 local storage: ', e);
-      }
+    try {
+      await saveHistoryItem({
+        resultImage: image,
+        prompt: streetPrompt,
+        headline,
+        copy,
+        engine: usedEngine as any,
+        createdAt: Date.now()
+      });
+      console.log('[NØRAI App] Session saved successfully');
+    } catch (e) {
+      console.error('[NØRAI App] Error saving history item:', e);
     }
-
-    const item = {
-      resultImage: imageUrl,
-      prompt: streetPrompt,
-      headline,
-      copy,
-      engine: usedEngine,
-      createdAt: Date.now(),
-    };
-
-    if (db) {
-      try {
-        await addDoc(collection(db, 'street_history'), item);
-      } catch (e) {
-        console.warn('Error adding document to Firestore, fallback to localStorage: ', e);
-      }
-    }
-
-    const existing = JSON.parse(localStorage.getItem('norai_street_history') || '[]');
-    localStorage.setItem('norai_street_history', JSON.stringify([{ id: Date.now().toString(), ...item }, ...existing]));
   };
 
   const reset = () => {
@@ -188,8 +186,6 @@ export default function App() {
             >
               {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
-
-            <ApiKeyDialog />
 
             {currentView !== 'archive' ? (
               <button
@@ -263,6 +259,8 @@ export default function App() {
                   Subes una prenda, producto, modelo o maniquí y define el concepto de street fashion. NØRAI sintetizará una fotografía editorial realista.
                 </p>
               </div>
+
+              <AiTransparencyNotice theme={theme} />
 
               {/* Uploaders Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

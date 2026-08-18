@@ -29,10 +29,14 @@ export const StreetPromptInput: React.FC<StreetPromptInputProps> = ({
         <textarea
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
+          maxLength={1000}
           placeholder="Describe the street fashion scene (e.g. 'Rainy night in Tokyo Shibuya with neon reflections', 'Brutalist concrete architecture backdrop in Berlin with high-contrast sunlight')..."
           rows={3}
           className="w-full px-5 py-4 bg-white/[0.03] border border-white/15 rounded-2xl text-sm font-sans text-white placeholder-white/30 focus:outline-none focus:border-white/50 focus:bg-white/[0.05] transition-all resize-none leading-relaxed"
         />
+        <span className="absolute bottom-3 right-4 text-[10px] font-mono text-white/30" aria-live="polite">
+          {prompt.length}/1000
+        </span>
       </div>
 
       {/* Street Presets Selector */}

@@ -2,11 +2,37 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    match /images/street/{allPaths=**} {
-      allow read, write: if true;
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
     }
-    match /{allPaths=**} {
-      allow read, write: if true;
+
+    // Compatibilidad temporal con el editor del probador virtual que comparte proyecto.
+    function canManageSharedProject() {
+      return isAdmin()
+        || (request.auth != null && request.auth.uid == 'K10ca6Z1hfSSTrhCck1hrp1EWR83');
+    }
+
+    function isValidImage() {
+      return request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    match /images/street/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidImage();
+      allow delete: if isAdmin();
+    }
+
+    // El probador virtual actual guarda sus imágenes directamente en /images.
+    match /images/{fileName} {
+      allow read: if true;
+      allow create, update: if canManageSharedProject() && isValidImage();
+      allow delete: if canManageSharedProject();
+    }
+
+    match /{topLevel}/{allPaths=**} {
+      allow read: if true;
+      allow write: if topLevel != 'images' && canManageSharedProject();
     }
   }
 }

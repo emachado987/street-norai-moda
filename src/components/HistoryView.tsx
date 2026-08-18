@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { HistoryItem, INITIAL_DEMO_HISTORY } from '../data/demoData';
-import { db } from '../firebase';
-import { collection, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { loadAllHistoryItems, deleteHistoryItem } from '../services/storageService';
 import { Download, Copy, Trash2, Sparkles, Image as ImageIcon, Check } from 'lucide-react';
 
 interface HistoryViewProps {
@@ -27,66 +26,18 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 
   const loadHistory = async () => {
     setLoading(true);
-    let firestoreItems: HistoryItem[] = [];
-    let localItems: HistoryItem[] = [];
-
-    // 1. Try loading from Cloud Firestore
-    if (db) {
-      try {
-        const q = query(collection(db, 'street_history'), orderBy('createdAt', 'desc'));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          firestoreItems.push({
-            id: docSnap.id,
-            resultImage: data.image || data.resultImage,
-            prompt: data.prompt || '',
-            headline: data.headline || 'NØRAI STREET',
-            copy: data.copy || '',
-            engine: data.engine || 'gemini',
-            createdAt: data.createdAt || Date.now()
-          });
-        });
-      } catch (err) {
-        console.warn('[NØRAI History] Firebase query notice:', err);
-      }
-    }
-
-    // 2. Load from LocalStorage
     try {
-      const local = localStorage.getItem('norai_street_history');
-      if (local) {
-        localItems = JSON.parse(local);
+      let items = await loadAllHistoryItems();
+      if (items.length === 0) {
+        items = INITIAL_DEMO_HISTORY;
       }
+      setHistoryItems(items);
     } catch (e) {
-      console.warn('[NØRAI History] LocalStorage read notice:', e);
+      console.error('[NØRAI History] Failed to load history:', e);
+      setHistoryItems(INITIAL_DEMO_HISTORY);
+    } finally {
+      setLoading(false);
     }
-
-    // 3. Merge Cloud Firestore & LocalStorage items smoothly
-    const combinedMap = new Map<string, HistoryItem>();
-
-    // Add Firestore items
-    firestoreItems.forEach((item) => combinedMap.set(item.id, item));
-
-    // Add LocalStorage items if not already present
-    localItems.forEach((item) => {
-      if (!combinedMap.has(item.id)) {
-        combinedMap.set(item.id, item);
-      }
-    });
-
-    let merged = Array.from(combinedMap.values());
-
-    // Fallback to initial demo lookbook if completely empty
-    if (merged.length === 0) {
-      merged = INITIAL_DEMO_HISTORY;
-    }
-
-    // Sort by createdAt descending
-    merged.sort((a, b) => b.createdAt - a.createdAt);
-
-    setHistoryItems(merged);
-    setLoading(false);
   };
 
   const handleDownload = (item: HistoryItem) => {
@@ -105,17 +56,13 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
   };
 
   const handleDelete = async (id: string) => {
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'street_history', id));
-      } catch (e) {
-        console.error('Failed to delete from Firestore:', e);
-      }
+    try {
+      await deleteHistoryItem(id);
+    } catch (e) {
+      console.error('Failed to delete history item:', e);
     }
-
     const updated = historyItems.filter((i) => i.id !== id);
     setHistoryItems(updated);
-    localStorage.setItem('norai_street_history', JSON.stringify(updated));
   };
 
   return (
@@ -137,6 +84,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
             </h1>
             <p className="text-white/50 text-sm font-sans font-light tracking-wide max-w-xl mt-3 leading-relaxed">
               Curated archive of synthesized high-fashion street editorials. Explore generated lookbooks or launch a new session.
+            </p>
+            <p className="text-amber-300/80 text-xs font-sans mt-2">
+              Las imágenes de este archivo han sido generadas o transformadas mediante inteligencia artificial.
             </p>
           </div>
         </div>
@@ -198,17 +148,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               <div className="relative aspect-[3/4] overflow-hidden bg-black/60">
                 <img
                   src={item.resultImage}
-                  alt={item.headline}
+                  alt={`${item.headline}. Imagen editorial generada con IA.`}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
                 />
+                {/* Discrete Transparent NØRAI Watermark Badge on Top Right */}
+                <div className="absolute top-3 right-3 w-8 sm:w-10 pointer-events-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.75)] z-10">
+                  <img
+                    src="/logo-norai-transparent.png"
+                    alt="NØRAI Watermark"
+                    className="w-full h-auto object-contain opacity-85 group-hover:opacity-100 transition-opacity"
+                  />
+                </div>
+                <span className="absolute top-3 left-3 z-10 rounded-full border border-white/15 bg-black/70 px-2.5 py-1 text-[9px] uppercase tracking-widest text-white/80">
+                  Generado con IA
+                </span>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
 
                 {/* Overlay details */}
-                <div className="absolute bottom-0 left-0 right-0 p-5 space-y-2">
+                <div className="absolute bottom-0 left-0 right-0 p-5 space-y-2 z-10 pointer-events-none">
                   <span className="text-[10px] uppercase font-mono tracking-widest text-red-400 font-semibold block">
                     {new Date(item.createdAt).toLocaleDateString()} — {item.engine.toUpperCase()}
                   </span>
-                  <h3 className="font-serif text-2xl font-light text-white leading-tight">
+                  <h3 className="font-serif text-2xl font-light text-white leading-tight pr-10 sm:pr-12">
                     {item.headline}
                   </h3>
                 </div>
@@ -234,13 +195,15 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                     {copiedId === item.id ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
                   </button>
 
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/50 hover:text-red-300 transition-colors"
-                    title="Eliminar de archivo"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {isAuthenticated && (
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="p-2 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/50 hover:text-red-300 transition-colors"
+                      title="Eliminar de archivo"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
