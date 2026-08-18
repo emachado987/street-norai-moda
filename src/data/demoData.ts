@@ -10,6 +10,7 @@ export interface StreetPreset {
 export interface HistoryItem {
   id: string;
   productImage?: string;
+  image?: string;
   resultImage: string;
   prompt: string;
   headline: string;
@@ -77,76 +78,25 @@ export const STREET_PRESETS: StreetPreset[] = [
   }
 ];
 
-// SVG high-res mock graphics generator for realistic offline demo rendering
-export const generateDemoImage = (promptText: string, garmentType: string = 'Garment'): string => {
-  const canvas = document.createElement('canvas');
-  canvas.width = 900;
-  canvas.height = 1200;
-  const ctx = canvas.getContext('2d');
-
-  if (!ctx) return '';
-
-  // Gradient background simulating street lighting
-  const grad = ctx.createLinearGradient(0, 0, 900, 1200);
-  grad.addColorStop(0, '#0f0f11');
-  grad.addColorStop(0.5, '#1e1b2e');
-  grad.addColorStop(1, '#050505');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 900, 1200);
-
-  // Geometric abstract shapes representing architectural street backdrop
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-  ctx.beginPath();
-  ctx.moveTo(100, 0);
-  ctx.lineTo(450, 1200);
-  ctx.lineTo(0, 1200);
-  ctx.fill();
-
-  ctx.fillStyle = 'rgba(255, 59, 48, 0.15)'; // Street accent light
-  ctx.beginPath();
-  ctx.arc(700, 300, 250, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Model silhouette
-  ctx.fillStyle = '#141416';
-  // Head
-  ctx.beginPath();
-  ctx.arc(450, 280, 75, 0, Math.PI * 2);
-  ctx.fill();
-  // Body torso
-  ctx.beginPath();
-  ctx.moveTo(350, 370);
-  ctx.lineTo(550, 370);
-  ctx.lineTo(580, 850);
-  ctx.lineTo(320, 850);
-  ctx.closePath();
-  ctx.fill();
-
-  // Garment overlay simulation
-  ctx.fillStyle = 'rgba(240, 240, 245, 0.9)';
-  ctx.fillRect(360, 420, 180, 280);
-
-  // Typography backdrop "NØRAI STREET"
-  ctx.font = 'bold 80px "Cormorant Garamond", serif';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-  ctx.textAlign = 'center';
-  ctx.fillText('NØRAI STREET', 450, 220);
-
-  ctx.font = '24px "Inter", sans-serif';
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-  ctx.fillText('EDITORIAL STREET SYNTHESIS', 450, 950);
-
-  ctx.font = 'italic 20px "Cormorant Garamond", serif';
-  ctx.fillStyle = '#ff3b30';
-  ctx.fillText(`"${promptText.substring(0, 45)}..."`, 450, 1000);
-
-  return canvas.toDataURL('image/png');
+// Function to get the correct demo image path based on preset ID or fallback
+export const getDemoImagePath = (presetId?: string): string => {
+  // If no ID is provided, default to shibuya-rain
+  const id = presetId || 'shibuya-rain';
+  
+  // Check if it's a known preset, otherwise default
+  const isValidPreset = STREET_PRESETS.some(p => p.id === id);
+  if (!isValidPreset && id !== 'shibuya-rain' && id !== 'brutalist-concrete') {
+     // If they enter a random prompt, just give them a fallback demo image
+     return '/demo/shibuya-rain.png';
+  }
+  
+  return `/demo/${id}.png`;
 };
 
 export const INITIAL_DEMO_HISTORY: HistoryItem[] = [
   {
     id: 'demo-1',
-    resultImage: generateDemoImage('Shibuya Rain & Neon Night Street Style'),
+    resultImage: getDemoImagePath('shibuya-rain'),
     prompt: 'Shibuya Rain & Neon',
     headline: 'TOKYO NIGHT SHIFT',
     copy: 'Urban night dynamics synthesized in rain-soaked Shibuya. Clean silhouette meets high-contrast raw street fashion. #NØRAI #STREET #TokyoStreetStyle',
@@ -155,7 +105,7 @@ export const INITIAL_DEMO_HISTORY: HistoryItem[] = [
   },
   {
     id: 'demo-2',
-    resultImage: generateDemoImage('Brutalist Minimalist Concrete Editorial'),
+    resultImage: getDemoImagePath('brutalist-concrete'),
     prompt: 'Brutalist Concrete Loft',
     headline: 'MONOLITHIC TAILORING',
     copy: 'Sharp geometric cuts against brutalist architecture. Stripped-down aesthetic focused on proportion and modern texture. #NØRAI #BrutalistModa #Minimalist',
