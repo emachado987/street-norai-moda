@@ -1,6 +1,6 @@
 import { db, storage } from '../firebase';
-import { collection, addDoc, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, setDoc, addDoc, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { HistoryItem } from '../data/demoData';
 
 const DB_NAME = 'norai_street_db';
@@ -33,33 +33,47 @@ export const saveLocalIDB = async (item: HistoryItem): Promise<void> => {
     });
   } catch (err) {
     console.warn('[NØRAI IDB] Save warning:', err);
-    try {
-      const existing = JSON.parse(localStorage.getItem('norai_street_history') || '[]');
-      localStorage.setItem('norai_street_history', JSON.stringify([item, ...existing.slice(0, 3)]));
-    } catch (e) {
-      console.warn('[NØRAI LocalStorage] Quota exceeded fallback:', e);
-    }
+  }
+
+  // Backup in localStorage
+  try {
+    const existing: HistoryItem[] = JSON.parse(localStorage.getItem('norai_street_history') || '[]');
+    const filtered = existing.filter((e) => e.id !== item.id);
+    localStorage.setItem('norai_street_history', JSON.stringify([item, ...filtered.slice(0, 10)]));
+  } catch (e) {
+    console.warn('[NØRAI LocalStorage] Quota notice:', e);
   }
 };
 
 export const getLocalIDB = async (): Promise<HistoryItem[]> => {
+  let idbItems: HistoryItem[] = [];
   try {
     const idb = await openIDB();
     const tx = idb.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const request = store.getAll();
-    return await new Promise((resolve, reject) => {
+    idbItems = await new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error);
     });
   } catch (err) {
     console.warn('[NØRAI IDB] Read warning:', err);
-    try {
-      return JSON.parse(localStorage.getItem('norai_street_history') || '[]');
-    } catch (e) {
-      return [];
-    }
   }
+
+  let lsItems: HistoryItem[] = [];
+  try {
+    lsItems = JSON.parse(localStorage.getItem('norai_street_history') || '[]');
+  } catch (e) {
+    lsItems = [];
+  }
+
+  const map = new Map<string, HistoryItem>();
+  idbItems.forEach((i) => map.set(i.id, i));
+  lsItems.forEach((i) => {
+    if (!map.has(i.id)) map.set(i.id, i);
+  });
+
+  return Array.from(map.values());
 };
 
 export const deleteLocalIDB = async (id: string): Promise<void> => {
@@ -71,67 +85,83 @@ export const deleteLocalIDB = async (id: string): Promise<void> => {
   } catch (err) {
     console.warn('[NØRAI IDB] Delete warning:', err);
   }
+
+  try {
+    const existing: HistoryItem[] = JSON.parse(localStorage.getItem('norai_street_history') || '[]');
+    const updated = existing.filter((item) => item.id !== id);
+    localStorage.setItem('norai_street_history', JSON.stringify(updated));
+  } catch (e) {
+    // ignore
+  }
 };
 
 export const saveHistoryItem = async (newItem: Omit<HistoryItem, 'id'>): Promise<HistoryItem> => {
-  const id = `norai_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-  let finalImageUrl = newItem.resultImage;
+  const timeId = `street_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+  let finalImageUrl = newItem.resultImage || (newItem as any).image || '';
 
-  // 1. Attempt Firebase Storage upload if base64 data URL
+  // 1. Upload to Firebase Storage using binary Blob (matching nørai-virtual-try-on architecture)
   if (storage && finalImageUrl.startsWith('data:image')) {
     try {
-      const storageRef = ref(storage, `images/street/${id}.png`);
+      const storageRef = ref(storage, `images/street/${timeId}.png`);
       const response = await fetch(finalImageUrl);
       const blob = await response.blob();
       await uploadBytes(storageRef, blob, { contentType: 'image/png' });
       finalImageUrl = await getDownloadURL(storageRef);
-      console.log('[NØRAI Storage] Successfully uploaded image to Firebase Storage:', finalImageUrl);
+      console.log('[NØRAI Storage] Uploaded binary blob to Firebase Storage:', finalImageUrl);
     } catch (err) {
-      console.warn('[NØRAI Storage] Firebase Storage upload skipped/failed:', err);
+      console.error('[NØRAI Storage] Firebase Storage blob upload error:', err);
+    }
+  }
+
+  let finalId = timeId;
+
+  // 2. Save document in Cloud Firestore using setDoc for idempotency
+  if (db) {
+    try {
+      const firestoreDoc = {
+        image: finalImageUrl,
+        resultImage: finalImageUrl,
+        prompt: newItem.prompt || '',
+        headline: newItem.headline || 'NØRAI STREET EDITORIAL',
+        copy: newItem.copy || '',
+        engine: newItem.engine || 'gemini',
+        createdAt: newItem.createdAt || Date.now()
+      };
+
+      await setDoc(doc(db, 'street_history', finalId), firestoreDoc);
+      console.log('[NØRAI Firestore] Saved session document to Cloud Firestore with ID:', finalId);
+    } catch (err) {
+      console.error('[NØRAI Firestore] Save document error:', err);
     }
   }
 
   const savedItem: HistoryItem = {
     ...newItem,
-    id,
+    id: finalId,
+    image: finalImageUrl,
     resultImage: finalImageUrl
   };
 
-  // 2. Attempt Firestore save (only if resultImage is a HTTP URL or under 800KB)
-  if (db) {
-    try {
-      if (!savedItem.resultImage.startsWith('data:image') || savedItem.resultImage.length < 900000) {
-        await addDoc(collection(db, 'street_history'), {
-          ...savedItem,
-          createdAt: savedItem.createdAt || Date.now()
-        });
-        console.log('[NØRAI Firestore] Saved session to Cloud Firestore');
-      }
-    } catch (err) {
-      console.warn('[NØRAI Firestore] Save document warning:', err);
-    }
-  }
-
-  // 3. Always save to IndexedDB (unlimited local storage)
+  // 3. Save local backup (IndexedDB / LocalStorage)
   await saveLocalIDB(savedItem);
 
   return savedItem;
 };
 
 export const loadAllHistoryItems = async (): Promise<HistoryItem[]> => {
-  let firestoreItems: HistoryItem[] = [];
-  let localItems: HistoryItem[] = [];
-
-  // 1. Load from Cloud Firestore
+  // 1. Load strictly from Cloud Firestore if configured
   if (db) {
+    const firestoreItems: HistoryItem[] = [];
     try {
       const q = query(collection(db, 'street_history'), orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
       querySnapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        const imgUrl = data.image || data.resultImage || '';
         firestoreItems.push({
           id: docSnap.id,
-          resultImage: data.resultImage || data.image || '',
+          image: imgUrl,
+          resultImage: imgUrl,
           prompt: data.prompt || '',
           headline: data.headline || 'NØRAI STREET EDITORIAL',
           copy: data.copy || '',
@@ -139,27 +169,46 @@ export const loadAllHistoryItems = async (): Promise<HistoryItem[]> => {
           createdAt: data.createdAt || Date.now()
         });
       });
+      // Return Firestore items strictly (even if empty) so local failed backups are never shown
+      return firestoreItems;
     } catch (err) {
       console.warn('[NØRAI Firestore] Query warning:', err);
+      // Only if query fails entirely do we let it fall through
     }
   }
 
-  // 2. Load from IndexedDB / LocalStorage
-  localItems = await getLocalIDB();
+  // 2. Fallback to Local Storage ONLY if Firebase is completely disconnected or fails
+  const localItems = await getLocalIDB();
 
-  // 3. Merge items
   const combinedMap = new Map<string, HistoryItem>();
-  firestoreItems.forEach((i) => combinedMap.set(i.id, i));
-  localItems.forEach((i) => {
-    if (!combinedMap.has(i.id)) {
-      combinedMap.set(i.id, i);
+  const seenSignatures = new Set<string>();
+
+  const processItem = (item: HistoryItem) => {
+    if (!item || !item.id) return;
+    const imgUrl = item.image || item.resultImage || '';
+    const imgSnippet = imgUrl ? imgUrl.substring(0, 80) : '';
+    const timeWindow = Math.floor((item.createdAt || 0) / 10000);
+    const signature = `${item.headline}_${timeWindow}_${imgSnippet}`;
+
+    if (!combinedMap.has(item.id) && !seenSignatures.has(signature)) {
+      combinedMap.set(item.id, { ...item, resultImage: imgUrl, image: imgUrl });
+      seenSignatures.add(signature);
     }
-  });
+  };
+
+  localItems.forEach(processItem);
 
   return Array.from(combinedMap.values()).sort((a, b) => b.createdAt - a.createdAt);
 };
 
 export const deleteHistoryItem = async (id: string): Promise<void> => {
+  if (storage) {
+    try {
+      await deleteObject(ref(storage, `images/street/${id}.png`));
+    } catch (e) {
+      console.warn('[NØRAI Storage] Delete warning:', e);
+    }
+  }
   if (db) {
     try {
       await deleteDoc(doc(db, 'street_history', id));

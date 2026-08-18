@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Lock, Sparkles, ShieldCheck } from 'lucide-react';
+import { auth } from '../firebase';
+import { getIdTokenResult, sendEmailVerification, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 interface LoginViewProps {
   onBack: () => void;
@@ -7,27 +9,44 @@ interface LoginViewProps {
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onBack, onLogin }) => {
-  const [accessCode, setAccessCode] = useState('');
-  const [error, setError] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const envPasscode = import.meta.env.VITE_EDITORIAL_ACCESS_CODE;
-    const input = accessCode.trim();
+    if (!auth) {
+      setError('El acceso editorial no está configurado. Contacta con administración.');
+      return;
+    }
 
-    // Secure editorial passcodes
-    const validCodes = [
-      envPasscode,
-      'NORAI-STREET-2026-X9',
-      'EDITORIAL-MODA-STREET#2026',
-      'NORAI-EDITOR-PRO-99'
-    ].filter(Boolean);
+    setIsLoading(true);
+    setError(null);
 
-    if (validCodes.includes(input)) {
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+
+      if (!credential.user.emailVerified) {
+        await sendEmailVerification(credential.user, { url: window.location.origin });
+        await signOut(auth);
+        setError('Te hemos enviado un correo de verificación. Ábrelo antes de volver a iniciar sesión.');
+        return;
+      }
+
+      const token = await getIdTokenResult(credential.user, true);
+
+      if (token.claims.admin !== true) {
+        await signOut(auth);
+        throw new Error('not-admin');
+      }
+
       onLogin();
-    } else {
-      setError(true);
+    } catch {
+      setError('Credenciales no válidas o cuenta sin permiso editorial.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -69,46 +88,75 @@ export const LoginView: React.FC<LoginViewProps> = ({ onBack, onLogin }) => {
               Acceso Portal Editorial
             </h1>
             <p className="text-xs text-white/50 font-sans font-light tracking-wide leading-relaxed">
-              Introduce tu clave de acceso autorizada NØRAI para desbloquear la síntesis editorial de street fashion.
+              Inicia sesión con una cuenta editorial autorizada para acceder al generador.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-xs uppercase tracking-widest text-white/70 mb-2 font-medium">
-                Clave de Acceso Editorial
+                Correo editorial
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError(null);
+                }}
+                placeholder="editor@ejemplo.com"
+                autoComplete="username"
+                required
+                className="w-full px-5 py-4 bg-white/5 border border-white/15 rounded-xl text-sm font-sans focus:outline-none focus:border-white transition-all"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase tracking-widest text-white/70 mb-2 font-medium">
+                Contraseña
               </label>
               <input
                 type="password"
-                value={accessCode}
+                value={password}
                 onChange={(e) => {
-                  setAccessCode(e.target.value);
-                  setError(false);
+                  setPassword(e.target.value);
+                  setError(null);
                 }}
-                placeholder="Introduce tu clave de seguridad..."
-                className="w-full px-5 py-4 bg-white/5 border border-white/15 rounded-xl text-sm font-sans focus:outline-none focus:border-white transition-all text-center tracking-widest"
-                autoFocus
+                placeholder="Tu contraseña"
+                autoComplete="current-password"
+                required
+                className="w-full px-5 py-4 bg-white/5 border border-white/15 rounded-xl text-sm font-sans focus:outline-none focus:border-white transition-all"
               />
               {error && (
                 <p className="text-xs text-red-400 mt-2 text-center font-sans">
-                  Clave de acceso no válida o expirada. Por favor verifica tus credenciales de editor.
+                  {error}
                 </p>
               )}
             </div>
 
             <button
               type="submit"
-              className="w-full py-4 bg-white text-black rounded-xl font-medium uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 shadow-lg"
+              disabled={isLoading}
+              className="w-full py-4 bg-white text-black rounded-xl font-medium uppercase tracking-widest text-xs hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Sparkles size={16} />
-              Desbloquear Generador Street
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  Autenticando...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} />
+                  Desbloquear Generador Street
+                </>
+              )}
             </button>
           </form>
 
           <div className="mt-8 pt-6 border-t border-white/10 text-center">
             <div className="inline-flex items-center gap-2 text-[11px] text-white/40 font-mono">
               <ShieldCheck size={14} className="text-green-500" />
-              <span>NØRAI Security Protocol Active</span>
+              <span>Acceso protegido con Firebase Auth</span>
             </div>
           </div>
         </div>

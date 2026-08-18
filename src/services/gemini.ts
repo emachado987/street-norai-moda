@@ -3,7 +3,6 @@ export interface GenerationOptions {
   modelImageBase64?: string | null;
   scenePrompt: string;
   engine: 'gemini' | 'openai';
-  apiKey?: string;
 }
 
 export interface GenerationResult {
