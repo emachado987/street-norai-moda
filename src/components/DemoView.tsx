@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { STREET_PRESETS, StreetPreset, generateDemoImage } from '../data/demoData';
+import { STREET_PRESETS, StreetPreset, getDemoImagePath } from '../data/demoData';
 import { ResultView } from './ResultView';
 import { Sparkles, ArrowLeft, Sliders, ShieldCheck } from 'lucide-react';
 
@@ -22,7 +22,7 @@ export const DemoView: React.FC<DemoViewProps> = ({ onBack, onAdminClick }) => {
     setDemoResult(null);
 
     setTimeout(() => {
-      const img = generateDemoImage(selectedPreset.sceneDescription);
+      const img = getDemoImagePath(selectedPreset.id);
       setDemoResult({
         image: img,
         headline: selectedPreset.name.toUpperCase(),
